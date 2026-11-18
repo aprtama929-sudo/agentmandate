@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentMandate — Scoped Payment Mandates for Agent ID Holders</title>
+<style>
+  :root { --bg:#0b0e14; --card:#131824; --line:#232b3d; --txt:#e8ecf3; --mut:#8b96ab; --acc:#f0b90b; --ok:#2ebd85; --bad:#f6465d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  .wrap { max-width:880px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:28px; margin:8px 0 4px; }
+  h2 { font-size:18px; margin:0 0 12px; }
+  p.sub { color:var(--mut); margin:0 0 20px; line-height:1.5; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { background:var(--acc); color:#111; border:0; border-radius:8px; padding:10px 16px; font-weight:600; cursor:pointer; }
+  button.secondary { background:#1d2536; color:var(--txt); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  input, select { background:#0d1119; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 10px; width:100%; }
+  label { display:block; font-size:13px; color:var(--mut); margin:10px 0 4px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  @media (max-width:640px){ .grid{ grid-template-columns:1fr; } }
+  .pill { display:inline-block; padding:3px 10px; border-radius:99px; font-size:12px; border:1px solid var(--line); color:var(--mut); }
+  .pill.ok { color:var(--ok); border-color:var(--ok); }
+  .pill.bad { color:var(--bad); border-color:var(--bad); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--mut); font-weight:600; }
+  .mono { font-family:ui-monospace,Menlo,monospace; font-size:12px; word-break:break-all; }
+  .small { font-size:13px; color:var(--mut); line-height:1.55; }
+  .small li { margin-bottom:6px; }
+  #status { min-height:20px; color:var(--mut); font-size:13px; margin-top:8px; white-space:pre-wrap; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>AgentMandate</h1>
+  <p class="sub">Scoped payment mandates for Agent ID holders on BNB Chain. A principal deposits BNB or USDT and
+  appoints a <b>registered agent</b> to pay on their behalf — inside hard on-chain limits: a per-payment cap, a total
+  budget, and an expiry. The agent can never exceed the mandate, and the principal can revoke and reclaim unspent
+  funds at any time. Only wallets that hold an <b>Agent ID</b> can take part: holding an Agent ID is required to
+  register as an agent and to create a mandate, and an agent's eligibility is re-checked on every payment.</p>
+
+  <div class="card">
+    <h2>1 · Connect wallet</h2>
+    <div class="row">
+      <button id="btnConnect">Connect wallet</button>
+      <span id="who" class="mono"></span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <span id="pillId" class="pill">Agent ID: unknown</span>
+      <span id="pillReg" class="pill">Registry: unknown</span>
+      <span id="pillCount" class="pill">Registered agents: –</span>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Register as an agent</h2>
+    <p class="small">Registration is the core interaction of AgentMandate. It is open only to Agent ID holders,
+    one registration per address, and only registered agents can be appointed under a mandate. You can deregister
+    yourself at any time; while deregistered you cannot be appointed or execute payments.</p>
+    <div class="row">
+      <button id="btnRegister">Register as agent</button>
+      <button id="btnDeregister" class="secondary">Deregister</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Create a mandate (principals)</h2>
+    <div class="grid">
+      <div><label>Agent address (must be registered)</label><input id="fAgent" placeholder="0x…"></div>
+      <div><label>Asset</label><select id="fAsset"><option value="native">BNB</option><option value="usdt">USDT</option></select></div>
+      <div><label>Per-payment cap (in asset units)</label><input id="fCap" type="number" min="0" step="any" placeholder="0.05"></div>
+      <div><label>Total budget (in asset units)</label><input id="fBudget" type="number" min="0" step="any" placeholder="0.2"></div>
+      <div><label>Duration (days)</label><input id="fDays" type="number" min="1" step="1" value="7"></div>
+      <div><label>Payees</label><select id="fAllowAny"><option value="true">Any payee</option><option value="false">Allowlist only</option></select></div>
+    </div>
+    <div class="row" style="margin-top:14px"><button id="btnCreate">Create mandate</button></div>
+    <p class="small">Creating a mandate moves no funds. After creating, fund it from the dashboard below
+    (BNB: direct deposit; USDT: you approve the exact amount in your wallet first — the contract never asks for
+    unlimited approvals).</p>
+  </div>
+
+  <div class="card">
+    <h2>4 · Mandate dashboard</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button id="btnRefresh" class="secondary">Refresh mandates</button>
+      <span class="small">Shows mandates where you are the principal or the agent. Every action asks your wallet to confirm the transaction — nothing is ever signed or sent without your confirmation.</span>
+    </div>
+    <div style="overflow-x:auto"><table id="tbl">
+      <thead><tr><th>ID</th><th>Role</th><th>Principal / Agent</th><th>Asset</th><th>Cap</th><th>Budget</th><th>Funded − Spent</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="grid" style="margin-top:14px">
+      <div><label>Act on mandate ID</label><input id="aId" type="number" min="1" step="1" placeholder="1"></div>
+      <div><label>Amount (fund / pay)</label><input id="aAmt" type="number" min="0" step="any" placeholder="0.01"></div>
+      <div><label>Payee address (pay / allowlist)</label><input id="aPayee" placeholder="0x…"></div>
+      <div><label>Memo (pay)</label><input id="aMemo" placeholder="invoice-001"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnFund" class="secondary">Fund</button>
+      <button id="btnPay" class="secondary">Pay (agent)</button>
+      <button id="btnAllow" class="secondary">Allow payee</button>
+      <button id="btnRevoke" class="secondary">Revoke &amp; reclaim</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Permissions, safety &amp; contract facts</h2>
+    <ul class="small">
+      <li><b>No admin keys.</b> Neither contract has an owner or any admin function. The deployer cannot pause the contracts, change their rules, or touch user funds. The Agent ID contract address and the registry address inside AgentMandate are immutable.</li>
+      <li><b>Who can move funds:</b> only a mandate's principal (fund, revoke, reclaim) and its appointed agent (pay, strictly within the mandate's cap, budget, balance, allowlist, and expiry). Every payment re-checks that the agent is still a registered Agent ID holder.</li>
+      <li><b>Supported assets:</b> native BNB and BSC USDT only.</li>
+      <li><b>No promises:</b> AgentMandate is a payments tool. It does not generate yield, returns, or income of any kind, and nothing on this page is financial advice.</li>
+      <li><b>Risk note:</b> smart contracts can contain undiscovered bugs. The contracts are open-source and verified — read them before depositing, and only deposit amounts you are comfortable risking.</li>
+      <li><b>Login:</b> this page uses the standard injected-wallet connection of your own wallet app. It never asks for seed phrases, private keys, pairing codes, or QR-code sign-in.</li>
+    </ul>
+    <p class="small mono">
+      Agent ID contract (SPACE ID): 0x60b9262456de011f7d15a54cdd8c48baaa8b022f<br>
+      AgentRegistry: <span id="addrRegistry">TBD</span><br>
+      AgentMandate: <span id="addrMandate">TBD</span><br>
+      BSC USDT: 0x55d398326f99059fF775485246999027B3197955
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+// ---- deployment constants (filled in after mainnet deploy) ----
+const REGISTRY_ADDRESS = "0x0e69ed84dd472B963Ac1BFdEA43092964e40609d";
+const MANDATE_ADDRESS  = "0xB7ACAaDd11718d3f1D2A1829ef4dC53Df7efd3d5";
+const AGENT_ID_ADDRESS = "0x60b9262456de011f7d15a54cdd8c48baaa8b022f";
+const USDT_ADDRESS     = "0x55d398326f99059fF775485246999027B3197955";
+const BSC_CHAIN_ID = 56n;
+
+const ERC20_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)"
+];
+const REGISTRY_ABI = [
+  "function registerAgent()",
+  "function deregisterAgent()",
+  "function isRegistered(address) view returns (bool)",
+  "function isEligibleAgent(address) view returns (bool)",
+  "function holdsAgentId(address) view returns (bool)",
+  "function agentCount() view returns (uint256)"
+];
+const MANDATE_ABI = [
+  "function createMandate(address agent, address asset, uint256 perTxCap, uint256 totalBudget, uint64 expiresAt, bool allowAnyPayee) returns (uint256)",
+  "function fundNative(uint256 id) payable",
+  "function fundToken(uint256 id, uint256 amount)",
+  "function setPayeeAllowed(uint256 id, address payee, bool allowed)",
+  "function pay(uint256 id, address payee, uint256 amount, string memo)",
+  "function revoke(uint256 id)",
+  "function closeExpired(uint256 id)",
+  "function mandateCount() view returns (uint256)",
+  "function spendable(uint256 id) view returns (uint256)",
+  "function getMandate(uint256 id) view returns (tuple(address principal, address agent, address asset, uint256 perTxCap, uint256 totalBudget, uint256 funded, uint256 spent, uint64 expiresAt, bool allowAnyPayee, bool revoked))"
+];
+
+let provider, signer, account;
+const $ = id => document.getElementById(id);
+const status = msg => { $("status").textContent = msg || ""; };
+const fmt = (v, dec) => ethers.formatUnits(v, dec);
+
+async function connect() {
+  if (!window.ethereum) { status("No injected wallet found. Open this page in your wallet app's browser."); return; }
+  provider = new ethers.BrowserProvider(window.ethereum);
+  const net = await provider.getNetwork();
+  if (net.chainId !== BSC_CHAIN_ID) {
+    try { await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); }
+    catch (e) { status("Please switch your wallet to BNB Chain (chain 56)."); return; }
+    provider = new ethers.BrowserProvider(window.ethereum);
+  }
+  signer = await provider.getSigner();
+  account = await signer.getAddress();
+  $("who").textContent = account;
+  await refreshPills();
+  await refreshMandates();
+}
+
+async function contracts(readOnly) {
+  const p = readOnly ? (provider || new ethers.JsonRpcProvider("https://bsc-rpc.publicnode.com")) : signer;
+  return {
+    agentId: new ethers.Contract(AGENT_ID_ADDRESS, ERC20_ABI, p),
+    registry: new ethers.Contract(REGISTRY_ADDRESS, REGISTRY_ABI, p),
+    vault: new ethers.Contract(MANDATE_ADDRESS, MANDATE_ABI, p),
+    usdt: new ethers.Contract(USDT_ADDRESS, ERC20_ABI, p)
+  };
+}
+
+async function refreshPills() {
+  if (!account) return;
+  const { agentId, registry } = await contracts(true);
+  const [holds, reg, count] = await Promise.all([
+    agentId.balanceOf(account).then(b => b > 0n).catch(() => false),
+    registry.isRegistered(account).catch(() => false),
+    registry.agentCount().catch(() => null)
+  ]);
+  $("pillId").textContent = "Agent ID: " + (holds ? "holder ✓" : "not a holder");
+  $("pillId").className = "pill " + (holds ? "ok" : "bad");
+  $("pillReg").textContent = "Registry: " + (reg ? "registered ✓" : "not registered");
+  $("pillReg").className = "pill " + (reg ? "ok" : "");
+  $("pillCount").textContent = "Registered agents: " + (count === null ? "–" : count.toString());
+}
+
+async function send(fn, label) {
+  try { status(label + " — confirm in your wallet…"); const tx = await fn(); status(label + " sent: " + tx.hash + " — waiting for confirmation…"); await tx.wait(); status(label + " confirmed ✓"); await refreshPills(); await refreshMandates(); }
+  catch (e) { status(label + " failed: " + (e.shortMessage || e.message)); }
+}
+
+$("btnConnect").onclick = connect;
+$("btnRegister").onclick = () => send(async () => (await contracts(false)).registry.registerAgent(), "Register");
+$("btnDeregister").onclick = () => send(async () => (await contracts(false)).registry.deregisterAgent(), "Deregister");
+
+$("btnCreate").onclick = () => send(async () => {
+  const { vault } = await contracts(false);
+  const dec = $("fAsset").value === "usdt" ? 18 : 18; // BNB and BSC USDT are both 18 decimals
+  const expiresAt = Math.floor(Date.now() / 1000) + Number($("fDays").value) * 86400;
+  return vault.createMandate(
+    $("fAgent").value.trim(),
+    $("fAsset").value === "usdt" ? USDT_ADDRESS : ethers.ZeroAddress,
+    ethers.parseUnits($("fCap").value, dec),
+    ethers.parseUnits($("fBudget").value, dec),
+    expiresAt,
+    $("fAllowAny").value === "true"
+  );
+}, "Create mandate");
+
+async function refreshMandates() {
+  const tbody = document.querySelector("#tbl tbody");
+  tbody.innerHTML = "";
+  if (!account) return;
+  const { vault } = await contracts(true);
+  const count = await vault.mandateCount().catch(() => 0n);
+  for (let i = 1n; i <= count; i++) {
+    const m = await vault.getMandate(i);
+    const mine = [m.principal.toLowerCase(), m.agent.toLowerCase()].includes(account.toLowerCase());
+    if (!mine) continue;
+    const isUsdt = m.asset.toLowerCase() === USDT_ADDRESS.toLowerCase();
+    const dec = 18, sym = isUsdt ? "USDT" : "BNB";
+    const role = m.principal.toLowerCase() === account.toLowerCase() ? "Principal" : "Agent";
+    const state = m.revoked ? "Revoked/closed" : (BigInt(Math.floor(Date.now()/1000)) > m.expiresAt ? "Expired" : "Active");
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${i}</td><td>${role}</td>
+      <td class="mono">P: ${m.principal}<br>A: ${m.agent}</td>
+      <td>${sym}</td><td>${fmt(m.perTxCap, dec)}</td><td>${fmt(m.totalBudget, dec)}</td>
+      <td>${fmt(m.funded - m.spent, dec)} left<br><span class="small">spent ${fmt(m.spent, dec)}</span></td>
+      <td>${new Date(Number(m.expiresAt) * 1000).toLocaleString()}</td><td>${state}</td>
+      <td class="small">${m.allowAnyPayee ? "any payee" : "allowlist"}</td>`;
+    tbody.appendChild(tr);
+  }
+  if (!tbody.children.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="small">No mandates for this wallet yet.</td></tr>';
+  }
+}
+$("btnRefresh").onclick = refreshMandates;
+
+$("btnFund").onclick = () => send(async () => {
+  const { vault, usdt } = await contracts(false);
+  const id = BigInt($("aId").value);
+  const m = await vault.getMandate(id);
+  const amt = ethers.parseUnits($("aAmt").value, 18);
+  if (m.asset === ethers.ZeroAddress) return vault.fundNative(id, { value: amt });
+  const cur = await usdt.allowance(account, MANDATE_ADDRESS);
+  if (cur < amt) { const ap = await usdt.approve(MANDATE_ADDRESS, amt); await ap.wait(); }
+  return vault.fundToken(id, amt);
+}, "Fund mandate");
+
+$("btnPay").onclick = () => send(async () => {
+  const { vault } = await contracts(false);
+  return vault.pay(BigInt($("aId").value), $("aPayee").value.trim(), ethers.parseUnits($("aAmt").value, 18), $("aMemo").value || "");
+}, "Pay");
+
+$("btnAllow").onclick = () => send(async () => {
+  const { vault } = await contracts(false);
+  return vault.setPayeeAllowed(BigInt($("aId").value), $("aPayee").value.trim(), true);
+}, "Allow payee");
+
+$("btnRevoke").onclick = () => send(async () => {
+  const { vault } = await contracts(false);
+  return vault.revoke(BigInt($("aId").value));
+}, "Revoke mandate");
+
+document.getElementById("addrRegistry").textContent = REGISTRY_ADDRESS;
+document.getElementById("addrMandate").textContent = MANDATE_ADDRESS;
+</script>
+</body>
+</html>
