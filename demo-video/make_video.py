@@ -46,31 +46,31 @@ slides = [
         ("Built for the Binance Wallet x BNB Chain Agent ID Hackathon.", "body"),
         ("Live on BNB Chain mainnet. Every claim in this video is verifiable on-chain.", "dim"),
     ])),
-    (9, slide("The problem", [
+    (8, slide("The problem", [
         ("AI agents need to spend money to be useful — paying for data, services, and fees.", "body"),
         ("But handing an agent your wallet means unlimited power over your funds. One bug or one bad prompt can drain everything.", "body"),
     ])),
-    (10, slide("The mandate", [
+    (9, slide("The mandate", [
         ("A principal deposits BNB or USDT and appoints one registered agent.", "body"),
         ("Four hard limits are fixed in the contract itself: a per-payment cap, a total budget, an expiry time, and an optional payee allowlist.", "body"),
         ("The agent pays freely inside those bounds — and provably cannot exceed them.", "body"),
     ])),
-    (12, slide("Agent ID at three gates", [
+    (10, slide("Agent ID at three gates", [
         ("1. Register: AgentRegistry.registerAgent() reverts unless the caller holds an Agent ID.", "body"),
         ("2. Create: createMandate() reverts unless the principal holds an Agent ID and the agent is registered and eligible.", "body"),
         ("3. Pay: every pay() call re-checks the agent's live eligibility before any funds move.", "body"),
     ])),
-    (10, slide("Live on mainnet", [
+    (9, slide("Live on mainnet", [
         ("AgentRegistry: " + REG, "mono"),
         ("AgentMandate: " + MAN, "mono"),
         ("Both contracts verified — Sourcify exact match, source open on GitHub.", "body"),
         ("First agent registered on-chain: aditya93.ai (agent #1).", "body"),
     ])),
-    (8, slide("Safety by construction", [
+    (7, slide("Safety by construction", [
         ("Neither contract has an owner or admin functions. The deployer cannot pause, upgrade, or withdraw user funds.", "body"),
         ("Principals can revoke at any time and reclaim every unspent unit. Expired mandates refund the principal when closed.", "body"),
     ])),
-    (6, slide("Try it", [
+    (5, slide("Try it", [
         ("Website: aprtama929-sudo.github.io/agentmandate", "mono"),
         ("Code: github.com/aprtama929-sudo/agentmandate", "mono"),
         ("Connect a wallet holding an Agent ID, register as an agent, and create your first mandate.", "body"),
@@ -95,5 +95,5 @@ subprocess.run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat,
                 "-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", "30",
                 "-c:a", "aac", "-movflags", "+faststart", mp4],
                check=True, capture_output=True)
-total = sum(d for _, d in slides)
+total = sum(d for d, _ in slides)
 print("OK", mp4, os.path.getsize(mp4), "bytes, slides total", total, "s")
